@@ -23,7 +23,7 @@ const PIXEL_TITLE = [
   ['10010','10010','10010','00010','00010','00100','01000'],
   ['11110','00010','00100','00100','01010','10001','00000'],
 ];
-function PixelTitle() { return <div className="pixel-title" role="img" aria-label="リバーステトリス">{PIXEL_TITLE.map((rows, letter) => <span className="pixel-letter" key={letter} style={{'--letter-color':COLORS[letter%5]} as React.CSSProperties}>{rows.flatMap((row,y)=>[...row].map((on,x)=><i key={`${x}-${y}`} className={on==='1'?'on':''}/>))}</span>)}</div>; }
+function PixelTitle() { return <div className="pixel-title" role="img" aria-label="リバーステトリス">{[PIXEL_TITLE.slice(0,4),PIXEL_TITLE.slice(4)].map((line,lineIndex)=><div className="pixel-title-line" key={lineIndex}>{line.map((rows,index)=>{const letter=lineIndex*4+index;return <span className="pixel-letter" key={letter} style={{'--letter-color':COLORS[letter%5]} as React.CSSProperties}>{rows.flatMap((row,y)=>[...row].map((on,x)=><i key={`${x}-${y}`} className={on==='1'?'on':''}/>))}</span>})}</div>)}</div>; }
 
 export default function Home() {
   const [screen, setScreen] = useState<'start'|'play'|'over'>('start');
