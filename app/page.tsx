@@ -39,6 +39,8 @@ export default function Home() {
   const [musicOn, setMusicOn] = useState(false);
   const audioRef = useRef<AudioContext | null>(null);
   const lastRotateRef = useRef(false);
+  const repeatDelayRef = useRef<number | null>(null);
+  const repeatIntervalRef = useRef<number | null>(null);
   const level = Math.floor(lines / 5) + 1;
   const stateRef = useRef({ board, piece, reversed, paused, screen, reverseEnabled }); stateRef.current = { board, piece, reversed, paused, screen, reverseEnabled };
   const cells = (p: Piece) => p.shape.map(([x,y]) => [p.x+x, p.y+y]);
@@ -94,6 +96,29 @@ export default function Home() {
     setBoard(out); setPiece(np); setNext(makePiece(stateRef.current.reverseEnabled)); lastRotateRef.current=false;
   }, [next, combo, playClearSound, playGameOverSound]);
   const move = useCallback((dx: number, dy: number) => { const s = stateRef.current; if (s.screen !== 'play' || s.paused) return; const np = { ...s.piece, x: s.piece.x + dx, y: s.piece.y + dy }; if (valid(np, s.board)) {setPiece(np);if(dx)lastRotateRef.current=false} else if (dy !== 0) lock(s.piece, s.board, s.reversed); }, [lock]);
+  const stopRepeat = useCallback(() => {
+    if (repeatDelayRef.current !== null) window.clearTimeout(repeatDelayRef.current);
+    if (repeatIntervalRef.current !== null) window.clearInterval(repeatIntervalRef.current);
+    repeatDelayRef.current = null;
+    repeatIntervalRef.current = null;
+  }, []);
+  const repeatControl = useCallback((action: () => void) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      stopRepeat();
+      action();
+      repeatDelayRef.current = window.setTimeout(() => {
+        repeatIntervalRef.current = window.setInterval(action, 75);
+      }, 230);
+    },
+    onPointerUp: stopRepeat,
+    onPointerCancel: stopRepeat,
+    onLostPointerCapture: stopRepeat,
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => { if (event.detail === 0) action(); },
+    onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => event.preventDefault(),
+  }), [stopRepeat]);
+  useEffect(() => stopRepeat, [stopRepeat]);
   const rotate = useCallback(() => { const s = stateRef.current; if (s.paused || s.screen !== 'play') return; const size = Math.max(...s.piece.shape.flat()) ; const shape=s.piece.shape.map(([x,y])=>[size-y,x]); const kicks=[[0,0],[-1,0],[1,0],[-2,0],[2,0],[0,s.reversed?1:-1],[0,s.reversed?-1:1]]; for(const [dx,dy] of kicks){const np={...s.piece,shape,x:s.piece.x+dx,y:s.piece.y+dy};if(valid(np,s.board)){setPiece(np);lastRotateRef.current=true;return}} }, []);
   const drop = useCallback(() => { const s = stateRef.current; if (s.paused || s.screen !== 'play') return; const dir = s.reversed ? -1 : 1; let np = { ...s.piece }; while (valid({ ...np, y: np.y + dir }, s.board)) np.y += dir; setScore(v => v + Math.abs(np.y - s.piece.y) * 2); lock(np, s.board, s.reversed); }, [lock]);
   useEffect(() => { if (screen !== 'play' || paused) return; const id = window.setInterval(() => move(0, reversed ? -1 : 1), Math.max(85, 760 * Math.pow(.82, level - 1))); return () => window.clearInterval(id); }, [screen, paused, reversed, level, move]);
@@ -114,7 +139,7 @@ export default function Home() {
       <div className={`board-wrap ${reversed?'is-reversed':''} ${flash?'is-flipping':''}`}><div className="gravity-pill">{reversed ? '↑ REVERSE GRAVITY' : '↓ NORMAL GRAVITY'}</div><div className="board" role="grid" aria-label="テトリス盤面">{display.flatMap((row,y)=>row.map((cell,x)=><span key={`${x}-${y}`} className={`cell ${cell?'filled':''} ${cell?.reverse?'reverse-cell':''}`} style={cell?{background:cell.color,boxShadow:`0 0 12px ${cell.color}66`}:undefined}>{cell?.reverse && <Sparkles size={12}/>}</span>))}</div>{paused && <div className="overlay"><Pause size={34}/><b>PAUSED</b><button onClick={()=>setPaused(false)}>ゲームに戻る</button><button className="ghost" onClick={()=>{setPaused(false);setScreen('start')}}>ホーム画面へ</button></div>}{screen === 'over' && <div className="overlay"><b>GAME OVER</b><span>{score.toLocaleString()} pts</span><button onClick={start}>もう一度</button><button className="ghost" onClick={()=>setScreen('start')}>ホーム画面へ</button></div>}{flash && <div className="reverse-flash"><Sparkles/><b>REVERSE!</b><span>GRAVITY FLIPPED</span></div>}{skillFlash&&<div className="skill-flash">{skillFlash}</div>}</div>
       <aside className="stats"><div><small>NEXT</small><div className="next-grid">{next.shape.map(([x,y],i)=><i key={i} className={next.reverse&&i===0?'special':''} style={{left:x*15,top:y*15,background:next.color}} />)}</div></div><div className="multiplier"><small>REVERSE CHAIN</small><strong>×{combo}</strong><span>{combo>1?'KEEP IT UP!':'READY'}</span></div></aside>
       <div className="mobile-stats"><span>LINES <b>{String(lines).padStart(2,'0')}</b></span><span>CHAIN <b>×{combo}</b></span><span className="mobile-next"><em>NEXT</em><span className="mobile-next-grid">{next.shape.map(([x,y],i)=><i key={i} className={next.reverse&&i===0?'special':''} style={{left:x*9,top:y*9,background:next.color}} />)}</span></span></div>
-      <div className="controls" aria-label="ゲーム操作"><button aria-label="左へ" onClick={()=>move(-1,0)}><ArrowLeft/></button><button aria-label="一段落下" onClick={()=>move(0,reversed?-1:1)}><ArrowDown style={reversed?{transform:'rotate(180deg)'}:undefined}/></button><button aria-label="右へ" onClick={()=>move(1,0)}><ArrowRight/></button><button aria-label="ハードドロップ" className="drop" onClick={drop}><ChevronsDown style={reversed?{transform:'rotate(180deg)'}:undefined}/><span>DROP</span></button><button aria-label="回転" className="rotate" onClick={rotate}><RotateCw/></button></div>
+      <div className="controls" aria-label="ゲーム操作"><button aria-label="左へ" {...repeatControl(()=>move(-1,0))}><ArrowLeft/></button><button aria-label="一段落下" {...repeatControl(()=>move(0,stateRef.current.reversed?-1:1))}><ArrowDown style={reversed?{transform:'rotate(180deg)'}:undefined}/></button><button aria-label="右へ" {...repeatControl(()=>move(1,0))}><ArrowRight/></button><button aria-label="ハードドロップ" className="drop" onClick={drop} onContextMenu={e=>e.preventDefault()}><ChevronsDown style={reversed?{transform:'rotate(180deg)'}:undefined}/><span>DROP</span></button><button aria-label="回転" className="rotate" onClick={rotate} onContextMenu={e=>e.preventDefault()}><RotateCw/></button></div>
       {screen === 'play' && <button className="pause" aria-label={paused?'再開':'一時停止'} onClick={()=>setPaused(v=>!v)}>{paused?<Play size={18}/>:<Pause size={18}/>}</button>}</section>}
     <footer>REVERSE MODE <b>{reverseEnabled?'ON':'OFF'}</b><span>•</span> BEST <b>{Math.max(score,highScores[0]??0).toLocaleString()}</b></footer></main>;
 }
