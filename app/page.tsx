@@ -53,7 +53,8 @@ export default function Home() {
     if (audioRef.current.state === 'suspended') void audioRef.current.resume();
     return audioRef.current;
   }, []);
-  const start = () => { if(musicOn)ensureAudio(); const p = makePiece(reverseEnabled); setBoard(blank()); setPiece(p); setNext(makePiece(reverseEnabled)); setScore(0); setLines(0); setCombo(1); setReversed(false); setPaused(false); setSkillFlash(''); lastRotateRef.current=false; setScreen('play'); };
+  const lockPortrait = () => { const orientation=window.screen.orientation as ScreenOrientation & {lock?:(mode:'portrait')=>Promise<void>}; void orientation?.lock?.('portrait').catch(()=>undefined); };
+  const start = () => { lockPortrait(); if(musicOn)ensureAudio(); const p = makePiece(reverseEnabled); setBoard(blank()); setPiece(p); setNext(makePiece(reverseEnabled)); setScore(0); setLines(0); setCombo(1); setReversed(false); setPaused(false); setSkillFlash(''); lastRotateRef.current=false; setScreen('play'); };
   const playClearSound = useCallback((count: number) => {
     if (!musicOn) return;
     const ctx = ensureAudio(); if (ctx) void emitClearSound(ctx,count);
@@ -75,13 +76,21 @@ export default function Home() {
   useEffect(() => {
     const blockPinch = (event: TouchEvent) => { if (event.touches.length > 1) event.preventDefault(); };
     const blockGesture = (event: Event) => event.preventDefault();
+    const blockSelection = (event: Event) => { if ((event.target as Element | null)?.closest?.('.app-shell')) event.preventDefault(); };
+    const clearSelection = () => { if (document.getSelection()?.rangeCount) document.getSelection()?.removeAllRanges(); };
     document.addEventListener('touchmove', blockPinch, { passive: false });
     document.addEventListener('gesturestart', blockGesture, { passive: false });
     document.addEventListener('gesturechange', blockGesture, { passive: false });
+    document.addEventListener('contextmenu', blockSelection);
+    document.addEventListener('selectstart', blockSelection);
+    document.addEventListener('selectionchange', clearSelection);
     return () => {
       document.removeEventListener('touchmove', blockPinch);
       document.removeEventListener('gesturestart', blockGesture);
       document.removeEventListener('gesturechange', blockGesture);
+      document.removeEventListener('contextmenu', blockSelection);
+      document.removeEventListener('selectstart', blockSelection);
+      document.removeEventListener('selectionchange', clearSelection);
     };
   }, []);
   useEffect(() => {
@@ -166,7 +175,7 @@ export default function Home() {
   useEffect(() => { const key = (e: KeyboardEvent) => { if (['ArrowLeft','ArrowRight','ArrowDown','ArrowUp',' '].includes(e.key)) e.preventDefault(); if (e.key === 'ArrowLeft') move(-1,0); if (e.key === 'ArrowRight') move(1,0); if (e.key === 'ArrowDown') move(0,reversed?-1:1); if (e.key === 'ArrowUp') rotate(); if (e.key === ' ') drop(); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, [move, rotate, drop, reversed]);
   const display = board.map(r => [...r]); if (screen === 'play') cells(piece).forEach(([x,y],i) => { if (display[y]?.[x] !== undefined) display[y][x] = { color: piece.color, reverse: piece.reverse && i === 0 }; });
 
-  return <main className={`app-shell ${reversed?'world-reversed':''}`}><div className="ambient" /><div className="character-snow" aria-hidden="true">{Array.from({length:15},(_,i)=><img key={i} src={`characters/${['purple','blue','yellow'][i%3]}.png`} alt="" style={{'--x':`${(i*37)%96}%`,'--delay':`${-(i*1.7)%14}s`,'--duration':`${9+(i%6)*1.4}s`,'--size':`${42+(i%4)*15}px`} as React.CSSProperties}/>)}</div><header className="topbar"><div className="brand"><span className="brand-mark">R</span><h1>REVERSE<br/><b>TETRIS</b></h1></div><div className="header-actions">{screen==='play'&&<button className="sound header-pause" aria-label={paused?'再開':'一時停止'} onClick={()=>setPaused(v=>!v)}>{paused?<Play size={17}/>:<Pause size={17}/>}</button>}<button className="sound" aria-label={musicOn?'BGMをオフ':'BGMをオン'} onClick={toggleSound}>{musicOn?<Volume2 size={17}/>:<VolumeX size={17}/>}</button><div className="top-score"><small>SCORE</small><strong>{score.toLocaleString()}</strong></div></div></header>
+  return <main className={`app-shell ${reversed?'world-reversed':''}`}><div className="orientation-guard"><RotateCw/><b>縦向きでプレイしてください</b></div><div className="ambient" /><div className="character-snow" aria-hidden="true">{Array.from({length:15},(_,i)=><img key={i} draggable={false} src={`characters/${['purple','blue','yellow'][i%3]}.png`} alt="" style={{'--x':`${(i*37)%96}%`,'--delay':`${-(i*1.7)%14}s`,'--duration':`${9+(i%6)*1.4}s`,'--size':`${42+(i%4)*15}px`} as React.CSSProperties}/>)}</div><header className="topbar"><div className="brand"><span className="brand-mark">R</span><h1>REVERSE<br/><b>TETRIS</b></h1></div><div className="header-actions">{screen==='play'&&<button className="sound header-pause" aria-label={paused?'再開':'一時停止'} onClick={()=>setPaused(v=>!v)}>{paused?<Play size={17}/>:<Pause size={17}/>}</button>}<button className="sound" aria-label={musicOn?'BGMをオフ':'BGMをオン'} onClick={toggleSound}>{musicOn?<Volume2 size={17}/>:<VolumeX size={17}/>}</button><div className="top-score"><small>SCORE</small><strong>{score.toLocaleString()}</strong></div></div></header>
     {screen === 'start' ? <section className="start-card"><PixelTitle/><h2>世界を<em>ひっくり返せ</em></h2><div className="sound-setting"><span><b>BGM と効果音</b><small>{musicOn?'サウンド オン':'サウンド オフ'}</small></span><button onClick={toggleSound} aria-label={musicOn?'すべての音をオフ':'すべての音をオン'}>{musicOn?<Volume2/>:<VolumeX/>}</button></div><label className="mode-toggle"><TileField variant="mode"/><span className="mode-copy"><b>リバースモード</b><small>反転コンボでスコア倍率アップ</small></span><input type="checkbox" checked={reverseEnabled} onChange={e=>setReverseEnabled(e.target.checked)} /><i /></label><button className="primary" onClick={start}><TileField variant="start"/><span><Play fill="currentColor" size={19}/> ゲームスタート</span></button><p className="rule-message">リバースブロックでラインを消すと盤面と重力が反転</p><div className="ranking"><b>TOP 5</b>{Array.from({length:5},(_,i)=><span key={i}><em>{i+1}</em><strong>{(highScores[i]??0).toLocaleString()}</strong><small>PTS</small></span>)}</div></section> : <section className="game-layout">
       <aside className="stats"><div><small>LINES</small><strong>{String(lines).padStart(2,'0')}</strong></div><div><small>LEVEL</small><strong>{level}</strong></div></aside>
       <div className={`board-wrap ${reversed?'is-reversed':''} ${flash?'is-flipping':''}`}>{reversed&&<div className="gravity-pill">↑ REVERSE GRAVITY</div>}<div className="board" role="grid" aria-label="テトリス盤面">{display.flatMap((row,y)=>row.map((cell,x)=><span key={`${x}-${y}`} className={`cell ${cell?'filled':''} ${cell?.reverse?'reverse-cell':''}`} style={cell?{background:cell.color,boxShadow:`0 0 12px ${cell.color}66`}:undefined}>{cell?.reverse && <Sparkles size={12}/>}</span>))}</div>{paused && <div className="overlay"><Pause size={34}/><b>PAUSED</b><button onClick={()=>setPaused(false)}>ゲームに戻る</button><button className="ghost" onClick={()=>{setPaused(false);setScreen('start')}}>ホーム画面へ</button></div>}{screen === 'over' && <div className="overlay"><b>GAME OVER</b><span>{score.toLocaleString()} pts</span><button onClick={start}>もう一度</button><button className="ghost" onClick={()=>setScreen('start')}>ホーム画面へ</button></div>}{flash && <div className="reverse-flash"><Sparkles/><b>REVERSE!</b><span>GRAVITY FLIPPED</span></div>}{skillFlash&&<div className="skill-flash">{skillFlash}</div>}</div>
