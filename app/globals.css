@@ -20,3 +20,5 @@
 @media(max-width:650px) and (max-height:600px){.brand h1{font-size:11px}.ranking{margin-top:7px;padding:5px 7px}.hint{margin-top:6px}.pixel-title{margin-bottom:8px}.intro{margin-bottom:10px}.sound-setting{margin-bottom:6px}.mode-toggle{margin-bottom:7px}}
 .rule-message{margin:0 auto clamp(14px,3.5vh,28px);color:#aeb5cc;font:700 clamp(9px,2.4vw,12px)/1.4 var(--font-geist-mono),monospace;letter-spacing:-.07em;white-space:nowrap}.start-card .rule-message+.pixel-title{margin-top:0}.start-card .pixel-title+h2{margin-top:12px}
 @media(max-width:650px) and (max-height:600px){.rule-message{margin-bottom:8px}.start-card .pixel-title+h2{margin-top:6px}}
+.start-card>.pixel-title{transform:translateY(-8px);margin-bottom:5px}.start-card>.pixel-title+h2{margin-top:0}.primary+.rule-message{margin:14px auto 0}.rule-message+.ranking{margin-top:10px}
+@media(max-width:650px) and (max-height:600px){.start-card>.pixel-title{transform:translateY(-5px);margin-bottom:2px}.primary+.rule-message{margin-top:8px}.rule-message+.ranking{margin-top:6px}}
