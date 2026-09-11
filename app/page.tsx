@@ -46,15 +46,32 @@ export default function Home() {
   const stateRef = useRef({ board, piece, reversed, paused, screen, reverseEnabled }); stateRef.current = { board, piece, reversed, paused, screen, reverseEnabled };
   const cells = (p: Piece) => p.shape.map(([x,y]) => [p.x+x, p.y+y]);
   const valid = (p: Piece, b: Cell[][]) => cells(p).every(([x,y]) => x >= 0 && x < W && y >= 0 && y < H && !b[y]?.[x]);
-  const start = () => { const p = makePiece(reverseEnabled); setBoard(blank()); setPiece(p); setNext(makePiece(reverseEnabled)); setScore(0); setLines(0); setCombo(1); setReversed(false); setPaused(false); setSkillFlash(''); lastRotateRef.current=false; setScreen('play'); };
+  const ensureAudio = useCallback(() => {
+    const AudioCtx=window.AudioContext||(window as typeof window & {webkitAudioContext:typeof AudioContext}).webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioRef.current || audioRef.current.state === 'closed') audioRef.current = new AudioCtx();
+    if (audioRef.current.state === 'suspended') void audioRef.current.resume();
+    return audioRef.current;
+  }, []);
+  const start = () => { if(musicOn)ensureAudio(); const p = makePiece(reverseEnabled); setBoard(blank()); setPiece(p); setNext(makePiece(reverseEnabled)); setScore(0); setLines(0); setCombo(1); setReversed(false); setPaused(false); setSkillFlash(''); lastRotateRef.current=false; setScreen('play'); };
   const playClearSound = useCallback((count: number) => {
     if (!musicOn) return;
-    const ctx = audioRef.current; if (ctx) void emitClearSound(ctx,count);
-  }, [musicOn]);
-  const playGameOverSound=useCallback(()=>{if(musicOn&&audioRef.current)void emitGameOverSound(audioRef.current)},[musicOn]);
-  const playLandingSound=useCallback(()=>{if(musicOn&&audioRef.current)void emitLandingSound(audioRef.current)},[musicOn]);
-  const toggleSound = () => { if (!musicOn) { const AudioCtx=window.AudioContext||(window as typeof window & {webkitAudioContext:typeof AudioContext}).webkitAudioContext; if (AudioCtx && !audioRef.current) audioRef.current=new AudioCtx(); void audioRef.current?.resume(); setMusicOn(true); } else setMusicOn(false); };
+    const ctx = ensureAudio(); if (ctx) void emitClearSound(ctx,count);
+  }, [musicOn, ensureAudio]);
+  const playGameOverSound=useCallback(()=>{if(!musicOn)return;const ctx=ensureAudio();if(ctx)void emitGameOverSound(ctx)},[musicOn,ensureAudio]);
+  const playLandingSound=useCallback(()=>{if(!musicOn)return;const ctx=ensureAudio();if(ctx)void emitLandingSound(ctx)},[musicOn,ensureAudio]);
+  const toggleSound = () => { const nextOn=!musicOn; if(nextOn)ensureAudio(); setMusicOn(nextOn); localStorage.setItem('reverse-tetris-sound',nextOn?'on':'off'); };
   useEffect(()=>()=>{void audioRef.current?.close()},[]);
+  useEffect(() => {
+    if (!musicOn) return;
+    const resumeAudio = () => { if (!document.hidden) ensureAudio(); };
+    document.addEventListener('pointerdown', resumeAudio, { passive: true });
+    document.addEventListener('visibilitychange', resumeAudio);
+    return () => {
+      document.removeEventListener('pointerdown', resumeAudio);
+      document.removeEventListener('visibilitychange', resumeAudio);
+    };
+  }, [musicOn, ensureAudio]);
   useEffect(() => {
     const blockPinch = (event: TouchEvent) => { if (event.touches.length > 1) event.preventDefault(); };
     const blockGesture = (event: Event) => event.preventDefault();
@@ -68,6 +85,7 @@ export default function Home() {
     };
   }, []);
   useEffect(() => {
+    if(localStorage.getItem('reverse-tetris-sound')==='on')setMusicOn(true);
     try {
       const saved = JSON.parse(localStorage.getItem('reverse-tetris-high-scores') || '[]');
       if (Array.isArray(saved)) setHighScores(saved.filter(Number.isFinite).slice(0, 5));
@@ -139,12 +157,12 @@ export default function Home() {
   useEffect(() => { if (screen !== 'play' || paused) return; const id = window.setInterval(() => move(0, reversed ? -1 : 1), Math.max(85, 760 * Math.pow(.82, level - 1))); return () => window.clearInterval(id); }, [screen, paused, reversed, level, move]);
   useEffect(() => {
     if (!musicOn || screen !== 'play' || paused) return;
-    const ctx = audioRef.current; if (!ctx) return; void ctx.resume();
+    const ctx = ensureAudio(); if (!ctx) return; void ctx.resume();
     const tune = [76,71,72,74,72,71,69,69,72,76,74,72,71,71,72,74,76,72,69,69,74,77,81,79,77,76,72,76,74,72,71,71];
     const notes = reversed ? [...tune].reverse() : tune; let i = 0;
     const playNote = () => { const osc = ctx.createOscillator(), gain = ctx.createGain(); osc.type = 'square'; osc.frequency.value = 440 * Math.pow(2, (notes[i++ % notes.length] - 69) / 12); gain.gain.setValueAtTime(.035, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + .14); osc.connect(gain).connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + .15); };
     playNote(); const id = window.setInterval(playNote, Math.max(105, 180 - level * 5)); return () => window.clearInterval(id);
-  }, [musicOn, screen, paused, reversed, level]);
+  }, [musicOn, screen, paused, reversed, level, ensureAudio]);
   useEffect(() => { const key = (e: KeyboardEvent) => { if (['ArrowLeft','ArrowRight','ArrowDown','ArrowUp',' '].includes(e.key)) e.preventDefault(); if (e.key === 'ArrowLeft') move(-1,0); if (e.key === 'ArrowRight') move(1,0); if (e.key === 'ArrowDown') move(0,reversed?-1:1); if (e.key === 'ArrowUp') rotate(); if (e.key === ' ') drop(); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, [move, rotate, drop, reversed]);
   const display = board.map(r => [...r]); if (screen === 'play') cells(piece).forEach(([x,y],i) => { if (display[y]?.[x] !== undefined) display[y][x] = { color: piece.color, reverse: piece.reverse && i === 0 }; });
 
