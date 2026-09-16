@@ -12,7 +12,7 @@ const SHAPES = [
 type Cell = { color: string; reverse?: boolean } | null;
 type Piece = { shape: number[][]; x: number; y: number; color: string; reverse: boolean; kind: number };
 const blank = (): Cell[][] => Array.from({ length: H }, () => Array(W).fill(null));
-function makePiece(reverseAllowed = true): Piece { const i = Math.floor(Math.random() * SHAPES.length); return { shape: SHAPES[i].map(([x,y]) => [x,y]), x: 3, y: 0, color: COLORS[i], reverse: reverseAllowed && Math.random() < .11, kind: i }; }
+function makePiece(reverseAllowed = true): Piece { const i = Math.floor(Math.random() * SHAPES.length); return { shape: SHAPES[i].map(([x,y]) => [x,y]), x: 3, y: 0, color: COLORS[i], reverse: reverseAllowed && Math.random() < .132, kind: i }; }
 const PIXEL_TITLE = [
   ['10010','10010','10010','00010','00010','00100','01000'],
   ['00011','00100','01010','01010','10001','10001','10001'],
@@ -42,10 +42,12 @@ export default function Home() {
   const lastRotateRef = useRef(false);
   const repeatDelayRef = useRef<number | null>(null);
   const repeatIntervalRef = useRef<number | null>(null);
+  const lockDelayRef = useRef<number | null>(null);
   const level = Math.floor(lines / 5) + 1;
   const stateRef = useRef({ board, piece, reversed, paused, screen, reverseEnabled }); stateRef.current = { board, piece, reversed, paused, screen, reverseEnabled };
   const cells = (p: Piece) => p.shape.map(([x,y]) => [p.x+x, p.y+y]);
   const valid = (p: Piece, b: Cell[][]) => cells(p).every(([x,y]) => x >= 0 && x < W && y >= 0 && y < H && !b[y]?.[x]);
+  const cancelLockDelay = useCallback(() => { if(lockDelayRef.current!==null)window.clearTimeout(lockDelayRef.current);lockDelayRef.current=null; },[]);
   const ensureAudio = useCallback(() => {
     const AudioCtx=window.AudioContext||(window as typeof window & {webkitAudioContext:typeof AudioContext}).webkitAudioContext;
     if (!AudioCtx) return null;
@@ -54,7 +56,7 @@ export default function Home() {
     return audioRef.current;
   }, []);
   const lockPortrait = () => { const orientation=window.screen.orientation as ScreenOrientation & {lock?:(mode:'portrait')=>Promise<void>}; void orientation?.lock?.('portrait').catch(()=>undefined); };
-  const start = () => { lockPortrait(); if(musicOn)ensureAudio(); const p = makePiece(reverseEnabled); setBoard(blank()); setPiece(p); setNext(makePiece(reverseEnabled)); setScore(0); setLines(0); setCombo(1); setReversed(false); setPaused(false); setSkillFlash(''); lastRotateRef.current=false; setScreen('play'); };
+  const start = () => { cancelLockDelay(); lockPortrait(); if(musicOn)ensureAudio(); const p = makePiece(reverseEnabled); setBoard(blank()); setPiece(p); setNext(makePiece(reverseEnabled)); setScore(0); setLines(0); setCombo(1); setReversed(false); setPaused(false); setSkillFlash(''); lastRotateRef.current=false; setScreen('play'); };
   const playClearSound = useCallback((count: number) => {
     if (!musicOn) return;
     const ctx = ensureAudio(); if (ctx) void emitClearSound(ctx,count);
@@ -123,6 +125,7 @@ export default function Home() {
   }, []);
 
   const lock = useCallback((p: Piece, b: Cell[][], rev: boolean) => {
+    cancelLockDelay();
     playLandingSound();
     const isTSpin = p.kind===2 && lastRotateRef.current && [[p.x,p.y],[p.x+2,p.y],[p.x,p.y+2],[p.x+2,p.y+2]].filter(([x,y])=>x<0||x>=W||y<0||y>=H||Boolean(b[y]?.[x])).length>=3;
     const placed = b.map(r => [...r]); cells(p).forEach(([x,y], i) => { if (placed[y]) placed[y][x] = { color: p.color, reverse: p.reverse && i === 0 }; });
@@ -136,8 +139,9 @@ export default function Home() {
     const np = { ...next, x: 3, y: nextRev ? H - 3 : 0 };
     if (!valid(np, out)) { setBoard(out); playGameOverSound(); setScreen('over'); return; }
     setBoard(out); setPiece(np); setNext(makePiece(stateRef.current.reverseEnabled)); lastRotateRef.current=false;
-  }, [next, combo, playClearSound, playGameOverSound, playLandingSound]);
-  const move = useCallback((dx: number, dy: number) => { const s = stateRef.current; if (s.screen !== 'play' || s.paused) return; const np = { ...s.piece, x: s.piece.x + dx, y: s.piece.y + dy }; if (valid(np, s.board)) {setPiece(np);if(dx)lastRotateRef.current=false} else if (dy !== 0) lock(s.piece, s.board, s.reversed); }, [lock]);
+  }, [next, combo, playClearSound, playGameOverSound, playLandingSound, cancelLockDelay]);
+  const scheduleLock = useCallback(() => { if(lockDelayRef.current!==null)return; lockDelayRef.current=window.setTimeout(()=>{lockDelayRef.current=null;const s=stateRef.current;if(s.screen!=='play'||s.paused)return;const dir=s.reversed?-1:1;if(!valid({...s.piece,y:s.piece.y+dir},s.board))lock(s.piece,s.board,s.reversed);},500); },[lock]);
+  const move = useCallback((dx: number, dy: number) => { const s = stateRef.current; if (s.screen !== 'play' || s.paused) return; const np = { ...s.piece, x: s.piece.x + dx, y: s.piece.y + dy }; if (valid(np, s.board)) {cancelLockDelay();setPiece(np);if(dx)lastRotateRef.current=false} else if (dy !== 0) scheduleLock(); }, [cancelLockDelay,scheduleLock]);
   const stopRepeat = useCallback(() => {
     if (repeatDelayRef.current !== null) window.clearTimeout(repeatDelayRef.current);
     if (repeatIntervalRef.current !== null) window.clearInterval(repeatIntervalRef.current);
@@ -160,9 +164,9 @@ export default function Home() {
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => { if (event.detail === 0) action(); },
     onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => event.preventDefault(),
   }), [stopRepeat]);
-  useEffect(() => stopRepeat, [stopRepeat]);
-  const rotate = useCallback(() => { const s = stateRef.current; if (s.paused || s.screen !== 'play') return; const size = Math.max(...s.piece.shape.flat()) ; const shape=s.piece.shape.map(([x,y])=>[size-y,x]); const kicks=[[0,0],[-1,0],[1,0],[-2,0],[2,0],[0,s.reversed?1:-1],[0,s.reversed?-1:1]]; for(const [dx,dy] of kicks){const np={...s.piece,shape,x:s.piece.x+dx,y:s.piece.y+dy};if(valid(np,s.board)){setPiece(np);lastRotateRef.current=true;return}} }, []);
-  const drop = useCallback(() => { const s = stateRef.current; if (s.paused || s.screen !== 'play') return; const dir = s.reversed ? -1 : 1; let np = { ...s.piece }; while (valid({ ...np, y: np.y + dir }, s.board)) np.y += dir; setScore(v => v + Math.abs(np.y - s.piece.y) * 2); lock(np, s.board, s.reversed); }, [lock]);
+  useEffect(() => () => { stopRepeat(); cancelLockDelay(); }, [stopRepeat,cancelLockDelay]);
+  const rotate = useCallback(() => { const s = stateRef.current; if (s.paused || s.screen !== 'play') return; const size = Math.max(...s.piece.shape.flat()) ; const shape=s.piece.shape.map(([x,y])=>[size-y,x]); const kicks=[[0,0],[-1,0],[1,0],[-2,0],[2,0],[0,s.reversed?1:-1],[0,s.reversed?-1:1]]; for(const [dx,dy] of kicks){const np={...s.piece,shape,x:s.piece.x+dx,y:s.piece.y+dy};if(valid(np,s.board)){cancelLockDelay();setPiece(np);lastRotateRef.current=true;return}} }, [cancelLockDelay]);
+  const drop = useCallback(() => { const s = stateRef.current; if (s.paused || s.screen !== 'play') return; cancelLockDelay();const dir = s.reversed ? -1 : 1; let np = { ...s.piece }; while (valid({ ...np, y: np.y + dir }, s.board)) np.y += dir; setScore(v => v + Math.abs(np.y - s.piece.y) * 2); lock(np, s.board, s.reversed); }, [lock,cancelLockDelay]);
   useEffect(() => { if (screen !== 'play' || paused) return; const id = window.setInterval(() => move(0, reversed ? -1 : 1), Math.max(85, 760 * Math.pow(.82, level - 1))); return () => window.clearInterval(id); }, [screen, paused, reversed, level, move]);
   useEffect(() => {
     if (!musicOn || screen !== 'play' || paused) return;
