@@ -28,6 +28,7 @@ function TileField({variant}:{variant:'mode'|'start'}) { const palette=variant==
 async function emitClearSound(ctx:AudioContext,count:number){await ctx.resume();const now=ctx.currentTime+.03,output=ctx.createDynamicsCompressor();output.threshold.value=-12;output.knee.value=8;output.ratio.value=6;output.connect(ctx.destination);const sets=[[57,60],[55,62,67],[60,64,67,72,76],[48,55,60,64,67,72,76,79,84]];const notes=sets[Math.min(4,count)-1];notes.forEach((note,i)=>{const osc=ctx.createOscillator(),gain=ctx.createGain(),start=now+i*(count===4?.055:.1);osc.type=count===1?'triangle':count===4?'sawtooth':'square';osc.frequency.value=440*Math.pow(2,(note-69)/12);gain.gain.setValueAtTime(count===1?.28:count===4?.34:.25,start);gain.gain.exponentialRampToValueAtTime(.001,start+(count===4?.5:.38));osc.connect(gain).connect(output);osc.start(start);osc.stop(start+.52)});if(count>=3){const boom=ctx.createOscillator(),g=ctx.createGain();boom.type='sine';boom.frequency.setValueAtTime(count===4?170:115,now);boom.frequency.exponentialRampToValueAtTime(35,now+.38);g.gain.setValueAtTime(count===4?.42:.24,now);g.gain.exponentialRampToValueAtTime(.001,now+.58);boom.connect(g).connect(output);boom.start(now);boom.stop(now+.6)}if(count===4){const buffer=ctx.createBuffer(1,ctx.sampleRate*.35,ctx.sampleRate),data=buffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,3);const noise=ctx.createBufferSource(),g=ctx.createGain();noise.buffer=buffer;g.gain.setValueAtTime(.2,now);g.gain.exponentialRampToValueAtTime(.001,now+.35);noise.connect(g).connect(output);noise.start(now)}}
 async function emitGameOverSound(ctx:AudioContext){await ctx.resume();const now=ctx.currentTime+.04,output=ctx.createDynamicsCompressor();output.threshold.value=-10;output.ratio.value=8;output.connect(ctx.destination);[196,147,110,73].forEach((frequency,i)=>{const osc=ctx.createOscillator(),gain=ctx.createGain(),start=now+i*.16;osc.type='sawtooth';osc.frequency.setValueAtTime(frequency,start);osc.frequency.exponentialRampToValueAtTime(frequency*.55,start+.34);gain.gain.setValueAtTime(.24,start);gain.gain.exponentialRampToValueAtTime(.001,start+.38);osc.connect(gain).connect(output);osc.start(start);osc.stop(start+.4)});const buffer=ctx.createBuffer(1,ctx.sampleRate*.75,ctx.sampleRate),data=buffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,2);const blast=ctx.createBufferSource(),gain=ctx.createGain(),filter=ctx.createBiquadFilter();blast.buffer=buffer;filter.type='lowpass';filter.frequency.setValueAtTime(1800,now+.42);filter.frequency.exponentialRampToValueAtTime(120,now+1.1);gain.gain.setValueAtTime(.42,now+.42);gain.gain.exponentialRampToValueAtTime(.001,now+1.15);blast.connect(filter).connect(gain).connect(output);blast.start(now+.42)}
 async function emitLandingSound(ctx:AudioContext){await ctx.resume();const now=ctx.currentTime+.01,output=ctx.createDynamicsCompressor();output.threshold.value=-16;output.ratio.value=5;output.connect(ctx.destination);const thud=ctx.createOscillator(),gain=ctx.createGain();thud.type='triangle';thud.frequency.setValueAtTime(125,now);thud.frequency.exponentialRampToValueAtTime(58,now+.11);gain.gain.setValueAtTime(.24,now);gain.gain.exponentialRampToValueAtTime(.001,now+.14);thud.connect(gain).connect(output);thud.start(now);thud.stop(now+.15);const click=ctx.createOscillator(),clickGain=ctx.createGain();click.type='square';click.frequency.setValueAtTime(310,now);click.frequency.exponentialRampToValueAtTime(155,now+.045);clickGain.gain.setValueAtTime(.07,now);clickGain.gain.exponentialRampToValueAtTime(.001,now+.055);click.connect(clickGain).connect(output);click.start(now);click.stop(now+.06)}
+async function emitTapSound(ctx:AudioContext){await ctx.resume();const now=ctx.currentTime+.005,osc=ctx.createOscillator(),gain=ctx.createGain();osc.type='square';osc.frequency.setValueAtTime(620,now);osc.frequency.exponentialRampToValueAtTime(430,now+.045);gain.gain.setValueAtTime(.055,now);gain.gain.exponentialRampToValueAtTime(.001,now+.06);osc.connect(gain).connect(ctx.destination);osc.start(now);osc.stop(now+.065)}
 
 export default function Home() {
   const [screen, setScreen] = useState<'start'|'play'|'over'>('start');
@@ -63,7 +64,7 @@ export default function Home() {
   }, [musicOn, ensureAudio]);
   const playGameOverSound=useCallback(()=>{if(!musicOn)return;const ctx=ensureAudio();if(ctx)void emitGameOverSound(ctx)},[musicOn,ensureAudio]);
   const playLandingSound=useCallback(()=>{if(!musicOn)return;const ctx=ensureAudio();if(ctx)void emitLandingSound(ctx)},[musicOn,ensureAudio]);
-  const toggleSound = () => { const nextOn=!musicOn; if(nextOn)ensureAudio(); setMusicOn(nextOn); localStorage.setItem('reverse-tetris-sound',nextOn?'on':'off'); };
+  const toggleSound = () => { const nextOn=!musicOn; if(nextOn){const ctx=ensureAudio();if(ctx)void emitTapSound(ctx)} setMusicOn(nextOn); localStorage.setItem('reverse-tetris-sound',nextOn?'on':'off'); };
   useEffect(()=>()=>{void audioRef.current?.close()},[]);
   useEffect(() => {
     if (!musicOn) return;
@@ -75,6 +76,14 @@ export default function Home() {
       document.removeEventListener('visibilitychange', resumeAudio);
     };
   }, [musicOn, ensureAudio]);
+  useEffect(() => {
+    const playButtonTap = (event: PointerEvent) => {
+      if (!musicOn || !(event.target as Element | null)?.closest?.('.app-shell button')) return;
+      const ctx=ensureAudio();if(ctx)void emitTapSound(ctx);
+    };
+    document.addEventListener('pointerdown',playButtonTap,{passive:true});
+    return () => document.removeEventListener('pointerdown',playButtonTap);
+  },[musicOn,ensureAudio]);
   useEffect(() => {
     const blockPinch = (event: TouchEvent) => { if (event.touches.length > 1) event.preventDefault(); };
     const blockGesture = (event: Event) => event.preventDefault();
@@ -144,19 +153,21 @@ export default function Home() {
   }, [next, combo, playClearSound, playGameOverSound, playLandingSound, cancelLockDelay]);
   const scheduleLock = useCallback(() => { if(lockDelayRef.current!==null)return; lockDelayRef.current=window.setTimeout(()=>{lockDelayRef.current=null;const s=stateRef.current;if(s.screen!=='play'||s.paused)return;const dir=s.reversed?-1:1;if(!valid({...s.piece,y:s.piece.y+dir},s.board))lock(s.piece,s.board,s.reversed);},500); },[lock]);
   const move = useCallback((dx: number, dy: number) => { const s = stateRef.current; if (s.screen !== 'play' || s.paused) return; const np = { ...s.piece, x: s.piece.x + dx, y: s.piece.y + dy }; if (valid(np, s.board)) {cancelLockDelay();setPiece(np);if(dx)lastRotateRef.current=false} else if (dy !== 0) scheduleLock(); }, [cancelLockDelay,scheduleLock]);
+  const slideToEdge = useCallback((dx: number) => { const s=stateRef.current;if(s.screen!=='play'||s.paused)return;const np={...s.piece};while(valid({...np,x:np.x+dx},s.board))np.x+=dx;cancelLockDelay();setPiece(np);lastRotateRef.current=false; },[cancelLockDelay]);
   const stopRepeat = useCallback(() => {
     if (repeatDelayRef.current !== null) window.clearTimeout(repeatDelayRef.current);
     if (repeatIntervalRef.current !== null) window.clearInterval(repeatIntervalRef.current);
     repeatDelayRef.current = null;
     repeatIntervalRef.current = null;
   }, []);
-  const repeatControl = useCallback((action: () => void) => ({
+  const repeatControl = useCallback((action: () => void, holdAction?: () => void) => ({
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       stopRepeat();
       action();
       repeatDelayRef.current = window.setTimeout(() => {
+        if(holdAction){holdAction();return;}
         repeatIntervalRef.current = window.setInterval(action, 75);
       }, 230);
     },
@@ -187,7 +198,7 @@ export default function Home() {
       <div className={`board-wrap ${reversed?'is-reversed':''} ${flash?'is-flipping':''}`}>{reversed&&<div className="gravity-pill">↑ REVERSE GRAVITY</div>}<div className="deadline" aria-hidden="true"><span>DEAD LINE</span></div><div className="board" role="grid" aria-label="テトリス盤面">{display.flatMap((row,y)=>row.map((cell,x)=><span key={`${x}-${y}`} className={`cell ${cell?'filled':''} ${cell?.reverse?'reverse-cell':''}`} style={cell?{background:cell.color,boxShadow:`0 0 12px ${cell.color}66`}:undefined}>{cell?.reverse && <Sparkles size={12}/>}</span>))}</div>{paused && <div className="overlay"><Pause size={34}/><b>PAUSED</b><button onClick={()=>setPaused(false)}>ゲームに戻る</button><button className="ghost" onClick={()=>{setPaused(false);setScreen('start')}}>ホーム画面へ</button></div>}{screen === 'over' && <div className="overlay"><b>GAME OVER</b><span>{score.toLocaleString()} pts</span><button onClick={start}>もう一度</button><button className="ghost" onClick={()=>setScreen('start')}>ホーム画面へ</button></div>}{flash && <div className="reverse-flash"><Sparkles/><b>REVERSE!</b><span>GRAVITY FLIPPED</span></div>}{skillFlash&&<div className="skill-flash">{skillFlash}</div>}</div>
       <aside className="stats"><div><small>NEXT</small><div className="next-grid">{next.shape.map(([x,y],i)=><i key={i} className={next.reverse&&i===0?'special':''} style={{left:x*15,top:y*15,background:next.color}} />)}</div></div><div className="multiplier"><small>REVERSE CHAIN</small><strong>×{combo}</strong><span>{combo>1?'KEEP IT UP!':'READY'}</span></div></aside>
       <div className="mobile-stats"><span>LINES <b>{String(lines).padStart(2,'0')}</b></span><span>CHAIN <b>×{combo}</b></span><span className="mobile-next"><em>NEXT</em><span className="mobile-next-grid">{next.shape.map(([x,y],i)=><i key={i} className={next.reverse&&i===0?'special':''} style={{left:x*9,top:y*9,background:next.color}} />)}</span></span></div>
-      <div className="controls" aria-label="ゲーム操作"><button aria-label="左へ" {...repeatControl(()=>move(-1,0))}><ArrowLeft/></button><button aria-label="一段落下" {...repeatControl(()=>move(0,stateRef.current.reversed?-1:1))}><ArrowDown style={reversed?{transform:'rotate(180deg)'}:undefined}/></button><button aria-label="右へ" {...repeatControl(()=>move(1,0))}><ArrowRight/></button><button aria-label="ハードドロップ" className="drop" onClick={drop} onContextMenu={e=>e.preventDefault()}><ChevronsDown style={reversed?{transform:'rotate(180deg)'}:undefined}/><span>DROP</span></button><button aria-label="回転" className="rotate" onClick={rotate} onContextMenu={e=>e.preventDefault()}><RotateCw/></button></div>
+      <div className="controls" aria-label="ゲーム操作"><button aria-label="左へ" {...repeatControl(()=>move(-1,0),()=>slideToEdge(-1))}><ArrowLeft/></button><button aria-label="一段落下" {...repeatControl(()=>move(0,stateRef.current.reversed?-1:1))}><ArrowDown style={reversed?{transform:'rotate(180deg)'}:undefined}/></button><button aria-label="右へ" {...repeatControl(()=>move(1,0),()=>slideToEdge(1))}><ArrowRight/></button><button aria-label="ハードドロップ" className="drop" onClick={drop} onContextMenu={e=>e.preventDefault()}><ChevronsDown style={reversed?{transform:'rotate(180deg)'}:undefined}/><span>DROP</span></button><button aria-label="回転" className="rotate" onClick={rotate} onContextMenu={e=>e.preventDefault()}><RotateCw/></button></div>
       </section>}
     {screen!=='start'&&<footer>REVERSE MODE <b>{reverseEnabled?'ON':'OFF'}</b><span>•</span> BEST <b>{Math.max(score,highScores[0]??0).toLocaleString()}</b></footer>}</main>;
 }
