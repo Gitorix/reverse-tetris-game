@@ -168,7 +168,7 @@ export default function Home() {
   const repeatControl = useCallback((action: () => void, holdAction?: () => void) => ({
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
-      event.currentTarget.setPointerCapture(event.pointerId);
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Some mobile browsers do not expose pointer capture reliably. */ }
       stopRepeat();
       action();
       repeatDelayRef.current = window.setTimeout(() => {
@@ -179,6 +179,11 @@ export default function Home() {
     onPointerUp: stopRepeat,
     onPointerCancel: stopRepeat,
     onLostPointerCapture: stopRepeat,
+    onPointerMove: (event: React.PointerEvent<HTMLButtonElement>) => event.preventDefault(),
+    onTouchStart: (event: React.TouchEvent<HTMLButtonElement>) => event.preventDefault(),
+    onTouchMove: (event: React.TouchEvent<HTMLButtonElement>) => event.preventDefault(),
+    onTouchEnd: stopRepeat,
+    onDragStart: (event: React.DragEvent<HTMLButtonElement>) => event.preventDefault(),
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => { if (event.detail === 0) action(); },
     onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => event.preventDefault(),
   }), [stopRepeat]);
