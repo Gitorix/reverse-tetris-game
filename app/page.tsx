@@ -11,6 +11,7 @@ const SHAPES = [
 ];
 type Cell = { color: string; reverse?: boolean } | null;
 type Piece = { shape: number[][]; x: number; y: number; color: string; reverse: boolean; kind: number };
+type ScoreEntry = { score: number; reverseMode: boolean };
 const blank = (): Cell[][] => Array.from({ length: H }, () => Array(W).fill(null));
 function makePiece(reverseAllowed = true): Piece { const i = Math.floor(Math.random() * SHAPES.length); return { shape: SHAPES[i].map(([x,y]) => [x,y]), x: 3, y: 0, color: COLORS[i], reverse: reverseAllowed && Math.random() < .132, kind: i }; }
 const PIXEL_TITLE = [
@@ -35,7 +36,7 @@ export default function Home() {
   const [reverseEnabled, setReverseEnabled] = useState(true), [reversed, setReversed] = useState(false);
   const [board, setBoard] = useState<Cell[][]>(blank), [piece, setPiece] = useState<Piece>(() => makePiece()), [next, setNext] = useState<Piece>(() => makePiece());
   const [score, setScore] = useState(0), [lines, setLines] = useState(0), [combo, setCombo] = useState(1);
-  const [highScores, setHighScores] = useState<number[]>([]);
+  const [highScores, setHighScores] = useState<ScoreEntry[]>([]);
   const [paused, setPaused] = useState(false), [flash, setFlash] = useState(false);
   const [skillFlash, setSkillFlash] = useState('');
   const [musicOn, setMusicOn] = useState(false);
@@ -108,17 +109,21 @@ export default function Home() {
     if(localStorage.getItem('reverse-tetris-sound')==='on')setMusicOn(true);
     try {
       const saved = JSON.parse(localStorage.getItem('reverse-tetris-high-scores') || '[]');
-      if (Array.isArray(saved)) setHighScores(saved.filter(Number.isFinite).slice(0, 5));
+      if (Array.isArray(saved)) setHighScores(saved.map((entry: unknown): ScoreEntry | null => {
+        if (typeof entry === 'number' && Number.isFinite(entry)) return {score:entry,reverseMode:false};
+        if (entry && typeof entry === 'object') { const candidate=entry as Partial<ScoreEntry>;if(Number.isFinite(candidate.score))return {score:candidate.score as number,reverseMode:Boolean(candidate.reverseMode)}; }
+        return null;
+      }).filter((entry: ScoreEntry | null): entry is ScoreEntry => entry!==null).slice(0,5));
     } catch { /* Ignore invalid old save data. */ }
   }, []);
   useEffect(() => {
     if (screen !== 'over') return;
     setHighScores(previous => {
-      const updated = [...previous, score].sort((a, b) => b - a).slice(0, 5);
+      const updated = [...previous, {score,reverseMode:reverseEnabled}].sort((a, b) => b.score - a.score).slice(0, 5);
       localStorage.setItem('reverse-tetris-high-scores', JSON.stringify(updated));
       return updated;
     });
-  }, [screen, score]);
+  }, [screen, score, reverseEnabled]);
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool: (tool: object, options: { signal: AbortSignal }) => void | Promise<void> } }).modelContext;
     if (!context?.registerTool) return;
@@ -193,12 +198,12 @@ export default function Home() {
   const display = board.map(r => [...r]); if (screen === 'play') cells(piece).forEach(([x,y],i) => { if (display[y]?.[x] !== undefined) display[y][x] = { color: piece.color, reverse: piece.reverse && i === 0 }; });
 
   return <main className={`app-shell ${reversed?'world-reversed':''}`}><div className="orientation-guard"><RotateCw/><b>縦向きでプレイしてください</b></div><div className="ambient" /><div className="character-snow" aria-hidden="true">{Array.from({length:15},(_,i)=><img key={i} draggable={false} src={`characters/${['purple','blue','yellow'][i%3]}.png`} alt="" style={{'--x':`${(i*37)%96}%`,'--delay':`${-(i*1.7)%14}s`,'--duration':`${9+(i%6)*1.4}s`,'--size':`${42+(i%4)*15}px`} as React.CSSProperties}/>)}</div><header className="topbar"><div className="brand"><span className="brand-mark">R</span><h1>REVERSE<br/><b>TETRIS</b></h1></div><div className="header-actions">{screen==='play'&&<button className="sound header-pause" aria-label={paused?'再開':'一時停止'} onClick={()=>setPaused(v=>!v)}>{paused?<Play size={17}/>:<Pause size={17}/>}</button>}<button className="sound" aria-label={musicOn?'BGMをオフ':'BGMをオン'} onClick={toggleSound}>{musicOn?<Volume2 size={17}/>:<VolumeX size={17}/>}</button><div className="top-score"><small>SCORE</small><strong>{score.toLocaleString()}</strong></div></div></header>
-    {screen === 'start' ? <section className="start-card"><PixelTitle/><h2>世界を<em>ひっくり返せ</em></h2><div className="sound-setting"><span><b>BGM と効果音</b><small>{musicOn?'サウンド オン':'サウンド オフ'}</small></span><button onClick={toggleSound} aria-label={musicOn?'すべての音をオフ':'すべての音をオン'}>{musicOn?<Volume2/>:<VolumeX/>}</button></div><label className="mode-toggle"><TileField variant="mode"/><span className="mode-copy"><b>リバースモード</b><small>反転コンボでスコア倍率アップ</small></span><input type="checkbox" checked={reverseEnabled} onChange={e=>setReverseEnabled(e.target.checked)} /><i /></label><button className="primary" onClick={start}><TileField variant="start"/><span><Play fill="currentColor" size={19}/> ゲームスタート</span></button><p className="rule-message">リバースブロックでラインを消すと盤面と重力が反転</p><div className="ranking"><b>TOP 5</b>{Array.from({length:5},(_,i)=><span key={i}><em>{i+1}</em><strong>{(highScores[i]??0).toLocaleString()}</strong><small>PTS</small></span>)}</div></section> : <section className="game-layout">
+    {screen === 'start' ? <section className="start-card"><PixelTitle/><h2>世界を<em>ひっくり返せ</em></h2><div className="sound-setting"><span><b>BGM と効果音</b><small>{musicOn?'サウンド オン':'サウンド オフ'}</small></span><button onClick={toggleSound} aria-label={musicOn?'すべての音をオフ':'すべての音をオン'}>{musicOn?<Volume2/>:<VolumeX/>}</button></div><label className="mode-toggle"><TileField variant="mode"/><span className="mode-copy"><b>リバースモード</b><small>反転コンボでスコア倍率アップ</small></span><input type="checkbox" checked={reverseEnabled} onChange={e=>setReverseEnabled(e.target.checked)} /><i /></label><button className="primary" onClick={start}><TileField variant="start"/><span><Play fill="currentColor" size={19}/> ゲームスタート</span></button><p className="rule-message">リバースブロックでラインを消すと盤面と重力が反転</p><div className="ranking"><b>TOP 5</b>{Array.from({length:5},(_,i)=>{const entry=highScores[i];return <span key={i}><em>{i+1}</em><strong className={entry?.reverseMode?'reverse-score':'normal-score'}>{(entry?.score??0).toLocaleString()}</strong><small>PTS</small></span>})}</div></section> : <section className="game-layout">
       <aside className="stats"><div><small>LINES</small><strong>{String(lines).padStart(2,'0')}</strong></div><div><small>LEVEL</small><strong>{level}</strong></div></aside>
       <div className={`board-wrap ${reversed?'is-reversed':''} ${flash?'is-flipping':''}`}>{reversed&&<div className="gravity-pill">↑ REVERSE GRAVITY</div>}<div className="deadline" aria-hidden="true"><span>DEAD LINE</span></div><div className="board" role="grid" aria-label="テトリス盤面">{display.flatMap((row,y)=>row.map((cell,x)=><span key={`${x}-${y}`} className={`cell ${cell?'filled':''} ${cell?.reverse?'reverse-cell':''}`} style={cell?{background:cell.color,boxShadow:`0 0 12px ${cell.color}66`}:undefined}>{cell?.reverse && <Sparkles size={12}/>}</span>))}</div>{paused && <div className="overlay"><Pause size={34}/><b>PAUSED</b><button onClick={()=>setPaused(false)}>ゲームに戻る</button><button className="ghost" onClick={()=>{setPaused(false);setScreen('start')}}>ホーム画面へ</button></div>}{screen === 'over' && <div className="overlay"><b>GAME OVER</b><span>{score.toLocaleString()} pts</span><button onClick={start}>もう一度</button><button className="ghost" onClick={()=>setScreen('start')}>ホーム画面へ</button></div>}{flash && <div className="reverse-flash"><Sparkles/><b>REVERSE!</b><span>GRAVITY FLIPPED</span></div>}{skillFlash&&<div className="skill-flash">{skillFlash}</div>}</div>
       <aside className="stats"><div><small>NEXT</small><div className="next-grid">{next.shape.map(([x,y],i)=><i key={i} className={next.reverse&&i===0?'special':''} style={{left:x*15,top:y*15,background:next.color}} />)}</div></div><div className="multiplier"><small>REVERSE CHAIN</small><strong>×{combo}</strong><span>{combo>1?'KEEP IT UP!':'READY'}</span></div></aside>
       <div className="mobile-stats"><span>LINES <b>{String(lines).padStart(2,'0')}</b></span><span>CHAIN <b>×{combo}</b></span><span className="mobile-next"><em>NEXT</em><span className="mobile-next-grid">{next.shape.map(([x,y],i)=><i key={i} className={next.reverse&&i===0?'special':''} style={{left:x*9,top:y*9,background:next.color}} />)}</span></span></div>
       <div className="controls" aria-label="ゲーム操作"><button aria-label="左へ" {...repeatControl(()=>move(-1,0),()=>slideToEdge(-1))}><ArrowLeft/></button><button aria-label="一段落下" {...repeatControl(()=>move(0,stateRef.current.reversed?-1:1))}><ArrowDown style={reversed?{transform:'rotate(180deg)'}:undefined}/></button><button aria-label="右へ" {...repeatControl(()=>move(1,0),()=>slideToEdge(1))}><ArrowRight/></button><button aria-label="ハードドロップ" className="drop" onClick={drop} onContextMenu={e=>e.preventDefault()}><ChevronsDown style={reversed?{transform:'rotate(180deg)'}:undefined}/><span>DROP</span></button><button aria-label="回転" className="rotate" onClick={rotate} onContextMenu={e=>e.preventDefault()}><RotateCw/></button></div>
       </section>}
-    {screen!=='start'&&<footer>REVERSE MODE <b>{reverseEnabled?'ON':'OFF'}</b><span>•</span> BEST <b>{Math.max(score,highScores[0]??0).toLocaleString()}</b></footer>}</main>;
+    {screen!=='start'&&<footer>REVERSE MODE <b>{reverseEnabled?'ON':'OFF'}</b><span>•</span> BEST <b>{Math.max(score,highScores[0]?.score??0).toLocaleString()}</b></footer>}</main>;
 }
